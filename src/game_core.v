@@ -125,8 +125,6 @@ module game_core #(
             game_over    <= 1'b0;
         end else if (frame) begin
             
-            // Single driver for game_over: collision / ground contact is set here.
-            // The restart branch below clears it again, so a restart still wins.
             if (crash1 || crash2 || (bird_y >= 10'd480 - BIRD_H)) game_over <= 1'b1;
 
             if ((score_tens > h_score_tens) || ((score_tens == h_score_tens) && (score_ones > h_score_ones))) begin
@@ -204,7 +202,6 @@ module game_core #(
     
     wire in_bird_box = (x >= BIRD_X) && (x < BIRD_X + BIRD_W) && (y >= bird_y) && (y < bird_y + BIRD_H);
     
-    // Scale down by 3 to map screen pixels to 8x8 grid coordinates
     wire [9:0] bx_div = bx_full / 3;
     wire [9:0] by_div = by_full / 3;
     
@@ -213,32 +210,22 @@ module game_core #(
 
     reg [2:0] p_color;
     always @(*) begin
-        p_color = 3'd0; // Transparent by default
+        p_color = 3'd0; 
         if (in_bird_box) begin
             case (by)
-                3'd0: begin // Line 1: 5,6 yellow
-                    if (bx == 3'd4 || bx == 3'd5)               p_color = 3'd3; // Yellow
+                3'd0: if (bx == 3'd4 || bx == 3'd5)             p_color = 3'd3;
+                3'd1: if (bx >= 3'd3 && bx <= 3'd6)             p_color = 3'd3;
+                3'd2: begin
+                    if (bx == 3'd3 || bx == 3'd4 || bx == 3'd6)  p_color = 3'd3;
+                    else if (bx == 3'd5)                        p_color = 3'd4;
                 end
-                3'd1: begin // Line 2: 4,5,6,7 yellow
-                    if (bx >= 3'd3 && bx <= 3'd6)               p_color = 3'd3; // Yellow
+                3'd3: begin
+                    if (bx >= 3'd0 && bx <= 3'd5)             p_color = 3'd3;
+                    else if (bx == 3'd6 || bx == 3'd7)          p_color = 3'd7;
                 end
-                3'd2: begin // Line 3: 4,5,7 yellow, 6 black
-                    if (bx == 3'd3 || bx == 3'd4 || bx == 3'd6)  p_color = 3'd3; // Yellow
-                    else if (bx == 3'd5)                        p_color = 3'd4; // Black
-                end
-                3'd3: begin // Line 4: 1-6 yellow, 7-8 red
-                    if (bx >= 3'd0 && bx <= 3'd5)               p_color = 3'd3; // Yellow
-                    else if (bx == 3'd6 || bx == 3'd7)          p_color = 3'd7; // Red
-                end
-                3'd4: begin // Line 5: 1-6 yellow
-                    if (bx >= 3'd0 && bx <= 3'd5)               p_color = 3'd3; // Yellow
-                end
-                3'd5: begin // Line 6: 2-6 yellow
-                    if (bx >= 3'd1 && bx <= 3'd5)               p_color = 3'd3; // Yellow
-                end
-                3'd6: begin // Line 7: 3-5 yellow
-                    if (bx >= 3'd2 && bx <= 3'd4)               p_color = 3'd3; // Yellow
-                end
+                3'd4: if (bx >= 3'd0 && bx <= 3'd5)             p_color = 3'd3;
+                3'd5: if (bx >= 3'd1 && bx <= 3'd5)             p_color = 3'd3;
+                3'd6: if (bx >= 3'd2 && bx <= 3'd4)             p_color = 3'd3;
                 default: p_color = 3'd0;
             endcase
         end
@@ -253,7 +240,7 @@ module game_core #(
     ip_rect b_p2 (.x(x), .y(y), .rx(pipe2_x), .ry(bot_pipe2_y), .rw(PIPE_W), .rh(bot_pipe2_h), .hit(b_p2_hit));
     wire pipe_hit = t_p1_hit | b_p1_hit | t_p2_hit | b_p2_hit;
 
-    // 7. SCORE Rendering
+    // 7. SCORE Rendering (Digits 0-9)
     wire in_tens = (x >= 10'd292) && (x < 10'd316) && (y >= 10'd32) && (y < 10'd72);
     wire in_ones = (x >= 10'd324) && (x < 10'd348) && (y >= 10'd32) && (y < 10'd72);
     wire [9:0] xt = x - 10'd292;
@@ -313,13 +300,13 @@ module game_core #(
     wire draw_h_ones = in_h_ones && h_ones_font[ho_bit];
     wire h_score_hit = draw_h_tens | draw_h_ones;
 
-    // 8. "YOU LOST" Text Rendering
+    // 8. "YOU LOST" Text Rendering (Restored Original Font Table)
     wire in_yl = (x >= 10'd192) && (x < 10'd448) && (y >= 10'd220) && (y < 10'd260);
     wire [9:0] x_rel_yl = x - 10'd192;
     wire [9:0] y_rel_yl = y - 10'd220;
     wire [2:0] char_idx = x_rel_yl[7:5];    
     wire [4:0] char_x   = x_rel_yl[4:0];    
-    wire in_char = (char_x < 5'd24);             
+    wire in_char = (char_x < 5'd24);            
     wire [2:0] char_y_grid = y_rel_yl[5:3]; 
     wire [1:0] char_x_grid = char_x[4:3];   
     wire [3:0] yl_bit = 4'd14 - ({1'b0, char_y_grid} * 4'd3) - {2'b00, char_x_grid};
@@ -327,14 +314,15 @@ module game_core #(
     reg [14:0] yl_font;
     always @(*) begin
         case(char_idx)
-            3'd0: yl_font = 15'b101_101_111_010_010; 
-            3'd1: yl_font = 15'b111_101_101_101_111; 
-            3'd2: yl_font = 15'b101_101_101_101_111; 
-            3'd3: yl_font = 15'b000_000_000_000_000; 
-            3'd4: yl_font = 15'b100_100_100_100_111; 
-            3'd5: yl_font = 15'b111_101_101_101_111; 
-            3'd6: yl_font = 15'b111_100_111_001_111; 
-            3'd7: yl_font = 15'b111_010_010_010_010; 
+            3'd0: yl_font = 15'b101_101_111_010_010; // Y
+            3'd1: yl_font = 15'b111_101_101_101_111; // O
+            3'd2: yl_font = 15'b101_101_101_101_111; // U
+            3'd3: yl_font = 15'b000_000_000_000_000; // Space
+            3'd4: yl_font = 15'b100_100_100_100_111; // L
+            3'd5: yl_font = 15'b111_101_101_101_111; // O
+            3'd6: yl_font = 15'b111_100_111_001_111; // S
+            3'd7: yl_font = 15'b111_010_010_010_010; // T
+            default: yl_font = 15'b0;
         endcase
     end
     wire draw_yl = game_over && in_yl && in_char && yl_font[yl_bit];
