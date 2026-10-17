@@ -39,10 +39,6 @@ endmodule`default_nettype none
 
 `default_nettype none
 
-`default_nettype none
-
-`default_nettype none
-
 module game_core #(
     parameter DB = 500000    
 ) (
@@ -58,8 +54,8 @@ module game_core #(
 );
 
     localparam [9:0] BIRD_X     = 10'd160; 
-    // Scaled to 2x2: Width = 14*2 = 28, Height = 12*2 = 24
-    localparam [9:0] BIRD_W     = 10'd28;  
+    // 8x8 grid scaled 3x3 = 24x24 pixels wide/tall
+    localparam [9:0] BIRD_W     = 10'd24;  
     localparam [9:0] BIRD_H     = 10'd24;  
     localparam [9:0] PIPE_W     = 10'd48;  
     localparam [9:0] GAP_H      = 10'd130; 
@@ -129,8 +125,8 @@ module game_core #(
             game_over    <= 1'b0;
         end else if (frame) begin
             
-            // Single driver for game_over: set on crash / ground contact here.
-            // The restart branch below clears it again, so restart still wins.
+            // Single driver for game_over: collision / ground contact is set here.
+            // The restart branch below clears it again, so a restart still wins.
             if (crash1 || crash2 || (bird_y >= 10'd480 - BIRD_H)) game_over <= 1'b1;
 
             if ((score_tens > h_score_tens) || ((score_tens == h_score_tens) && (score_ones > h_score_ones))) begin
@@ -202,74 +198,46 @@ module game_core #(
     wire crash2 = (BIRD_X + BIRD_W > pipe2_x) && (BIRD_X < pipe2_x + PIPE_W) &&
                   ((bird_y < pipe2_gap_y) || (bird_y + BIRD_H > bot_pipe2_y));
 
-    // 6. Graphics Hitboxes & 14x12 Scaled 2x2 Pigeon Sprite ROM (Facing Right)
+    // 6. Graphics Hitboxes & 8x8 Scaled 3x3 New Bird Sprite ROM (No Flip)
     wire [9:0] bx_full = x - BIRD_X;
     wire [9:0] by_full = y - bird_y;
     
     wire in_bird_box = (x >= BIRD_X) && (x < BIRD_X + BIRD_W) && (y >= bird_y) && (y < bird_y + BIRD_H);
     
-    // Scale down by 2 to map screen pixels to your 14x12 grid coordinates
-    wire [9:0] bx_div = bx_full / 2;
-    wire [9:0] by_div = by_full / 2;
-    wire [3:0] bx     = bx_div[3:0];
-    wire [3:0] by     = by_div[3:0];
+    // Scale down by 3 to map screen pixels to 8x8 grid coordinates
+    wire [9:0] bx_div = bx_full / 3;
+    wire [9:0] by_div = by_full / 3;
+    
+    wire [2:0] bx = bx_div[2:0];
+    wire [2:0] by = by_div[2:0];
 
     reg [2:0] p_color;
     always @(*) begin
         p_color = 3'd0; // Transparent by default
         if (in_bird_box) begin
             case (by)
-                4'd0: begin // First Line (Row 0)
-                    if (bx >= 4'd9 && bx <= 4'd11) p_color = 3'd1; // 10,11,12 black
+                3'd0: begin // Line 1: 5,6 yellow
+                    if (bx == 3'd4 || bx == 3'd5)               p_color = 3'd3; // Yellow
                 end
-                4'd1: begin // Second Line (Row 1)
-                    if ((bx >= 4'd1 && bx <= 4'd4) || bx == 4'd8 || bx == 4'd12) p_color = 3'd1; // 2,3,4,5,9,13 black
-                    else if (bx >= 4'd9 && bx <= 4'd11)                          p_color = 3'd3; // 10,11,12 dark gray
+                3'd1: begin // Line 2: 4,5,6,7 yellow
+                    if (bx >= 3'd3 && bx <= 3'd6)               p_color = 3'd3; // Yellow
                 end
-                4'd2: begin // Third Line (Row 2)
-                    if (bx == 4'd0 || bx == 4'd5 || bx == 4'd7 || bx == 4'd10 || bx == 4'd12) p_color = 3'd1; // 1,6,8,11,13 black
-                    else if ((bx >= 4'd1 && bx <= 4'd3) || bx == 4'd8 || bx == 4'd9 || bx == 4'd11) p_color = 3'd3; // 2,3,4,9,10,12 dark gray
-                    else if (bx == 4'd4)                                                     p_color = 3'd4; // 5 light gray
+                3'd2: begin // Line 3: 4,5,7 yellow, 6 black
+                    if (bx == 3'd3 || bx == 3'd4 || bx == 3'd6)  p_color = 3'd3; // Yellow
+                    else if (bx == 3'd5)                        p_color = 3'd4; // Black
                 end
-                4'd3: begin // Fourth Line (Row 3)
-                    if (bx == 4'd0 || bx == 4'd6 || bx == 4'd7 || bx == 4'd13)                 p_color = 3'd1; // 1,7,8,14 black
-                    else if ((bx >= 4'd1 && bx <= 4'd3) || (bx >= 4'd8 && bx <= 4'd10))        p_color = 3'd3; // 2,3,4,9,10,11 dark gray
-                    else if (bx == 4'd4 || bx == 4'd5)                                       p_color = 3'd4; // 5,6 light gray
-                    else if (bx == 4'd11 || bx == 4'd12)                                     p_color = 3'd2; // 12,13 orange
+                3'd3: begin // Line 4: 1-6 yellow, 7-8 red
+                    if (bx >= 3'd0 && bx <= 3'd5)               p_color = 3'd3; // Yellow
+                    else if (bx == 3'd6 || bx == 3'd7)          p_color = 3'd7; // Red
                 end
-                4'd4: begin // Fifth Line (Row 4)
-                    if (bx == 4'd1 || bx == 4'd11 || bx == 4'd12)                              p_color = 3'd1; // 2,13,12 black
-                    else if (bx == 4'd2 || bx == 4'd9 || bx == 4'd10)                          p_color = 3'd3; // 3,10,11 dark gray
-                    else if (bx == 4'd8)                                                     p_color = 3'd6; // 9 green
-                    else if (bx >= 4'd3 && bx <= 4'd7)                                       p_color = 3'd4; // 4,5,6,7,8 light gray
+                3'd4: begin // Line 5: 1-6 yellow
+                    if (bx >= 3'd0 && bx <= 3'd5)               p_color = 3'd3; // Yellow
                 end
-                4'd5: begin // Sixth Line (Row 5)
-                    if (bx == 4'd2 || bx == 4'd11)                                           p_color = 3'd1; // 3,12 black
-                    else if (bx >= 4'd3 && bx <= 4'd7)                                       p_color = 3'd4; // 4,5,6,7,8 light gray
-                    else if (bx == 4'd8)                                                     p_color = 3'd7; // 9 purple
-                    else if (bx == 4'd9 || bx == 4'd10)                                      p_color = 3'd6; // 10,11 green
+                3'd5: begin // Line 6: 2-6 yellow
+                    if (bx >= 3'd1 && bx <= 3'd5)               p_color = 3'd3; // Yellow
                 end
-                4'd6: begin // Seventh Line (Row 6)
-                    if (bx == 4'd3 || bx == 4'd11)                                           p_color = 3'd1; // 4,12 black
-                    else if (bx >= 4'd4 && bx <= 4'd8)                                       p_color = 3'd4; // 5,6,7,8,9 light gray
-                    else if (bx == 4'd9 || bx == 4'd10)                                      p_color = 3'd7; // 10,11 purple
-                end
-                4'd7: begin // Eighth Line (Row 7)
-                    if (bx == 4'd3 || bx == 4'd11)                                           p_color = 3'd1; // 4,12 black
-                    else if (bx >= 4'd4 && bx <= 4'd10)                                      p_color = 3'd4; // 5,6,7,8,9,10,11 light gray
-                end
-                4'd8: begin // Ninth Line (Row 8)
-                    if (bx == 4'd2 || bx == 4'd10)                                           p_color = 3'd1; // 3,11 black
-                    else if (bx >= 4'd3 && bx <= 4'd9)                                       p_color = 3'd4; // 4,5,6,7,8,9,10 light gray
-                end
-                4'd9: begin // Tenth Line (Row 9)
-                    if (bx >= 4'd2 && bx <= 4'd10)                                           p_color = 3'd1; // 3 to 11 black
-                end
-                4'd10: begin // Eleventh Line (Row 10)
-                    if (bx == 4'd4 || bx == 4'd7)                                            p_color = 3'd7; // 5,8 reddish brown
-                end
-                4'd11: begin // Twelfth Line (Row 11)
-                    if (bx == 4'd3 || bx == 4'd6)                                            p_color = 3'd7; // 4,7 reddish brown
+                3'd6: begin // Line 7: 3-5 yellow
+                    if (bx >= 3'd2 && bx <= 3'd4)               p_color = 3'd3; // Yellow
                 end
                 default: p_color = 3'd0;
             endcase
@@ -374,13 +342,9 @@ module game_core #(
     reg [5:0] bird_rgb;
     always @(*) begin
         case (p_color)
-            3'd1: bird_rgb = 6'b01_01_01; // Dark Gray Outline
-            3'd2: bird_rgb = 6'b11_10_00; // Orange Beak
-            3'd3: bird_rgb = 6'b10_01_10; // Purple-Gray Head
-            3'd4: bird_rgb = 6'b10_10_10; // Light Gray Body
-            3'd5: bird_rgb = 6'b01_01_10; // Slate Wing
-            3'd6: bird_rgb = 6'b00_10_10; // Teal Neck Stripe
-            3'd7: bird_rgb = 6'b10_01_01; // Purple / Reddish Brown
+            3'd3: bird_rgb = 6'b11_10_00; // Yellow / Gold
+            3'd4: bird_rgb = 6'b01_01_01; // Black
+            3'd7: bird_rgb = 6'b11_00_00; // Red
             default: bird_rgb = 6'b00_00_00;
         endcase
     end
@@ -504,7 +468,7 @@ module game_core #(
 
     wire gap = (step == length - 4'd1) && (tick >= SIXTEENTH_TICKS - (SIXTEENTH_TICKS >> 2));
 
-    reg [15:0] tone_count;
+    reg [16:0] tone_count;
     reg        audio_out;
     
     always @(posedge clk) begin
